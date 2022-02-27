@@ -9,7 +9,7 @@ class IRS_leg(Flow):
         self.date_final = date_final
         self.df_curve = df_curve
         self.value_date = value_date
-        self.yf = YearFrac.Calculation(self.f1, self.f2, self.convention)
+        self.yf = YearFrac.calculation(self.f1, self.f2, self.convention)
 
     @property
     def date_final(self):
@@ -35,11 +35,11 @@ class IRS_leg(Flow):
     def value_date(self, value):
         self._value_date = value
 
-    def Gen_Dates(self):
+    def generate_dates(self):
         """Se generan fechas según la fecha de valoración"""
 
         if self.value_date <= self.f2:
-            final = int(YearFrac.Calculation(self.f1, self.date_final, self.convention) / self.yf)
+            final = int(YearFrac.calculation(self.f1, self.date_final, self.convention) / self.yf)
             return [self.f1 + rd(months=12 * x * self.yf) for x in range(final + 2)]
 
         else:
@@ -50,15 +50,15 @@ class IRS_leg(Flow):
                 x = x + 1
 
             self.f1 = self.f1 + rd(months=12 * x * self.yf)
-            final = int(YearFrac.Calculation(self.f2, self.date_final, self.convention) / self.yf)
+            final = int(YearFrac.calculation(self.f2, self.date_final, self.convention) / self.yf)
 
             return [self.f1 + rd(months=12 * x * self.yf) for x in range(final + 1)]
 
     def fix_dates(self):
-        return self.Gen_Dates()[:-1]
+        return self.generate_dates()[:-1]
 
     def pay_dates(self):
-        return self.Gen_Dates()[1:]
+        return self.generate_dates()[1:]
 
     def df_s(self):
         pay_dates = self.pay_dates()

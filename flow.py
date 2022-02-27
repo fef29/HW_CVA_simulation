@@ -10,7 +10,7 @@ class Flow:
         self.r = r
         self.convention = convention
         self.nominal = nominal
-        self.yf = YearFrac.Calculation(f1, f2, convention)
+        self.yf = YearFrac.calculation(f1, f2, convention)
 
     @property
     def f1(self):

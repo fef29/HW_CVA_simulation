@@ -8,7 +8,7 @@ class Curve:
         self.name = name
         self.dates = dates
         self.fd = fd
-        self.f = interp1d([date.toordinal() for date in self.dates], self.FD)
+        self.f = interp1d([date.toordinal() for date in self.dates], self.fd)
 
     @property
     def name(self):
