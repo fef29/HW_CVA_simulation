@@ -1,11 +1,5 @@
-import os
-import pandas as pd
 import numpy as np
-import datetime
-from scipy.interpolate import interp1d
 from scipy.stats import norm as norm
-from dateutil.relativedelta import relativedelta as rd
-
 
 class BachelierSwaption:
     def __init__(self, sigma, t, T, K, swap_rate):
@@ -19,7 +13,6 @@ class BachelierSwaption:
         self.vol_pond = self.sigma * np.sqrt(self.tau)
 
     def compute_price(self):
-
 
     def __call__(self):
         return self.vol_pond * (norm.pdf((self.swap_rate - self.K) / self.vol_pond) + (
