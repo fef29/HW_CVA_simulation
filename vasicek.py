@@ -12,7 +12,7 @@ class BachelierSwaption:
         self.tau = self.T - self.t
         self.vol_pond = self.sigma * np.sqrt(self.tau)
 
-    def compute_price(self):
+    # def compute_price(self):
 
     def __call__(self):
         return self.vol_pond * (norm.pdf((self.swap_rate - self.K) / self.vol_pond) + (
