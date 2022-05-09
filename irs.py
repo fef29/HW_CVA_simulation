@@ -67,7 +67,7 @@ class IRS_leg(Flow):
     def construct_flows(self):
         fix_dates = self.fix_dates()
         pay_dates = self.pay_dates()
-        return [Flow(f1, f2, self.r, self.convention, self.N) for f1, f2 in zip(fix_dates, pay_dates)]
+        return [Flow(f1, f2, self.r, self.convention, self.nominal) for f1, f2 in zip(fix_dates, pay_dates)]
 
     def value(self):
         FDs = self.df_s()

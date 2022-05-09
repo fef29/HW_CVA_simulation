@@ -6,9 +6,9 @@ from irs import IRS_leg
 
 
 def main():
-    ois_dates = pd.read_excel("Curves_EUR.xlsx", sheet_name="EUR", usecols="I", dtype={'Dates': datetime.date}).dropna()
+    ois_dates = pd.read_excel("archives\Curves_EUR.xlsx", sheet_name="EUR", usecols="I", dtype={'Dates': datetime.date}).dropna()
     ois_dates = ois_dates['EUR Std'].tolist()
-    ois_values = pd.read_excel("Curves_EUR.xlsx", sheet_name="EUR", usecols="J").dropna()['VL5'].tolist()
+    ois_values = pd.read_excel("archives\Curves_EUR.xlsx", sheet_name="EUR", usecols="J").dropna()['VL5'].tolist()
     ois_curve = Curve("OIS", ois_dates, ois_values)
 
     date_value = datetime.date(year=2020, month=12, day=31)
@@ -23,7 +23,7 @@ def main():
     flow_list = leg.construct_flows()
     yf = [x.yf for x in flow_list]
     fd = leg.df_s()
-    v = [f.Value(x) for x, f in zip(fd, flow_list)]
+    v = [f.value(x) for x, f in zip(fd, flow_list)]
     var = flow_list[1].yf
 
     print(leg.value())
