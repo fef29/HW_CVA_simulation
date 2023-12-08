@@ -4,7 +4,6 @@ import scipy.integrate as integrate
 # from scipy.interpolate import interp1d
 from scipy import interpolate
 
-
 def f0T(t, P0T):
     # time-step needed for differentiation
     dt = 0.01
@@ -14,12 +13,8 @@ def f0T(t, P0T):
 
 def GeneratePathsHWEuler(NoOfPaths, NoOfSteps, T, P0T, lambd, eta):
     # Initial interest rate is a forward rate at time t->0
-    r0 = f0T(0.01, P0T)
-    theta = lambda t: 1.0 / lambd * (f0T(t + dt, P0T) - f0T(t - dt, P0T)) / (2.0 * dt) + f0T(t, P0T) + eta * eta / (
-                2.0 * lambd * lambd) * (1.0 - np.exp(-2.0 * lambd * t))
-
-    # theta = lambda t: 0.1 +t -t
-    # print("changed theta")
+    r0 = HW_r_0(P0T, lambd, eta)
+    theta = HW_theta(lambd, eta, P0T)
 
     Z = np.random.normal(0.0, 1.0, [NoOfPaths, NoOfSteps])
     W = np.zeros([NoOfPaths, NoOfSteps + 1])
@@ -32,6 +27,7 @@ def GeneratePathsHWEuler(NoOfPaths, NoOfSteps, T, P0T, lambd, eta):
         # making sure that samples from normal have mean 0 and variance 1
         if NoOfPaths > 1:
             Z[:, i] = (Z[:, i] - np.mean(Z[:, i])) / np.std(Z[:, i])
+
         W[:, i + 1] = W[:, i] + np.power(dt, 0.5) * Z[:, i]
         R[:, i + 1] = R[:, i] + lambd * (theta(time[i]) - R[:, i]) * dt + eta * (W[:, i + 1] - W[:, i])
         time[i + 1] = time[i] + dt
@@ -45,8 +41,8 @@ def HW_theta(lambd, eta, P0T):
     dt = 0.01
     theta = lambda t: 1.0 / lambd * (f0T(t + dt, P0T) - f0T(t - dt, P0T)) / (2.0 * dt) + f0T(t, P0T) + eta * eta / (
                 2.0 * lambd * lambd) * (1.0 - np.exp(-2.0 * lambd * t))
-    # print("CHANGED THETA")
-    return theta  # lambda t: 0.1+t-t
+
+    return theta
 
 
 def HW_A(lambd, eta, P0T, T1, T2):
@@ -55,11 +51,9 @@ def HW_A(lambd, eta, P0T, T1, T2):
     B_r = lambda tau: 1.0 / lambd * (np.exp(-lambd * tau) - 1.0)
     theta = HW_theta(lambd, eta, P0T)
     temp1 = lambd * integrate.trapz(theta(T2 - zGrid) * B_r(zGrid), zGrid)
-
     temp2 = eta * eta / (4.0 * np.power(lambd, 3.0)) * (
                 np.exp(-2.0 * lambd * tau) * (4 * np.exp(lambd * tau) - 1.0) - 3.0) + eta * eta * tau / (
                         2.0 * lambd * lambd)
-
     return temp1 + temp2
 
 
@@ -336,6 +330,8 @@ def mainCalculation():
             Yield[j] = -np.log(ZCB[j]) / (Tj - T_end)
         plt.plot(Tgrid2, Yield)
         plt.plot(timeGrid, r[i, :])
+
+    print('finish')
 
 
 mainCalculation()

@@ -113,5 +113,7 @@ def mainCalculation():
     plt.legend(['P(0,t) market', 'P(0,t) Monte Carlo', 'P(0,t) from Affine form'])
     plt.title('ZCBs from Hull-White Model')
 
+    print('finish')
+
 
 mainCalculation()

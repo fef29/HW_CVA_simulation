@@ -407,4 +407,6 @@ def mainCalculation():
         plt.plot(Tgrid2, Yield)
 
 
+    print('finish')
+
 mainCalculation()
