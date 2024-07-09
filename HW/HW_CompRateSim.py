@@ -1,8 +1,79 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.integrate as integrate
-# from scipy.interpolate import interp1d
 from scipy import interpolate
+
+class Hull_White_1F:
+    def __init__(self, kappa, vol, curve):
+        self.kappa = kappa  # lambda
+        self.vol = vol  # eta
+        self.curve = curve  # {"time": ti, "ZCB": Pi}
+        self.P0T = self.interp_curve()
+        self.r0 = self.f0T(0.001)
+
+    def interp_curve(self):
+        interpolator = interpolate.splrep(self.curve["time"], np.log(self.curve["ZCB"]), s=0.00001)
+        P0T = lambda T: np.exp(interpolate.splev(T, interpolator, der=0))
+        return P0T
+
+    def f0T(self, t):
+        """
+        función que devuelve el fwd instantáneo a un tiempo t
+        """
+        # time-step needed for differentiation
+        dt = 0.01
+        expr = - (np.log(self.P0T(t + dt)) - np.log(self.P0T(t - dt))) / (2 * dt)
+        return expr
+
+    def HW_theta(self, t):
+        dt = 0.01
+        theta = (1.0 / self.kappa) * (self.f0T(t + dt) - self.f0T(t - dt)) / (2.0 * dt) + self.f0T(
+            t) + self.vol ** 2 / (2.0 * self.kappa ** 2) * (1.0 - np.exp(-2.0 * self.kappa * t))
+        return theta
+
+    def HW_B(self, tau):
+        return 1.0 / self.kappa * (np.exp(-self.kappa * tau) - 1.0)
+
+    def HW_A(self, T1, T2):
+        tau = T2 - T1
+        zGrid = np.linspace(0.0, tau, 250)
+        temp1 = self.kappa * integrate.trapz(self.HW_theta(T2 - zGrid) * self.HW_B(zGrid), zGrid)
+        temp2 = self.vol ** 2 / (4.0 * self.kappa ** 3) * (np.exp(-2.0 * self.kappa * tau) * (
+                    4 * np.exp(self.kappa * tau) - 1.0) - 3.0) + self.vol ** 2 * tau / (2.0 * self.kappa ** 2)
+        return temp1 + temp2
+
+    def HW_ZCB(self, T1, T2, rT1):
+        B_r = self.HW_B(T2 - T1)
+        A_r = self.HW_A(T1, T2)
+        return np.exp(A_r + B_r * rT1)
+
+    def plot_ZCB(self):
+        # In this experiment we compare ZCB from the Market and Analytical expression
+        N = 20
+        T_end0 = 49.0
+        Tgrid = np.linspace(0.1, T_end0, N)
+
+        Exact = np.zeros([N, 1])
+        Proxy_1FHW = np.zeros([N, 1])
+        Yield = np.zeros([N, 1])
+
+        for i, Ti in enumerate(Tgrid):
+            Proxy_1FHW[i] = self.HW_ZCB(0.0, Ti, self.r0)
+            Exact[i] = self.P0T(Ti)
+            Yield[i] = -np.log(Proxy_1FHW[i]) / Ti
+
+        plt.figure()
+        plt.grid()
+        plt.xlabel('T')
+        plt.xlabel('ZCB, P(0,t)')
+        plt.plot(Tgrid, Exact, '-k')
+        plt.plot(Tgrid, Proxy_1FHW, '--r')
+        plt.legend(["Analytcal ZCB", "ZCB-1F Model"])
+        plt.title('P(0,T) from Market vs. Analytical expression')
+
+
+
+
 
 def f0T(t, P0T):
     # time-step needed for differentiation
@@ -92,15 +163,84 @@ def HW_r_0(P0T, lambd, eta):
     return r0
 
 
-def mainCalculation():
+def mainCalculation(curve, lambd, eta):
     NoOfPaths = 20000
     NoOfSteps = 100
 
     # HW1F
-    lambd = 0.01
-    eta = 0.002
+    # lambd = 0.01  # kappa
+    # eta = 0.002  # sigma
+
+    ti = curve["time"]
+    Pi = curve["ZCB"]
+
+    interpolator = interpolate.splrep(ti, np.log(Pi), s=0.00001)
+    P0T = lambda T: np.exp(interpolate.splev(T, interpolator, der=0))
+    r0 = HW_r_0(P0T, lambd, eta)
+
+    # In this experiment we compare ZCB from the Market and Analytical expression
+    N = 20
+    T_end0 = 49.0
+    T_end0 = 12
+    Tgrid = np.linspace(0.1, T_end0, N)
+
+    Exact = np.zeros([N, 1])
+    Proxy_1FHW = np.zeros([N, 1])
+    Yield = np.zeros([N, 1])
+
+    for i, Ti in enumerate(Tgrid):
+        Proxy_1FHW[i] = HW_ZCB(lambd, eta, P0T, 0.0, Ti, r0)
+        Exact[i] = P0T(Ti)
+        Yield[i] = -np.log(Proxy_1FHW[i]) / Ti
+
+    plt.figure(1)
+    plt.grid()
+    plt.xlabel('T')
+    plt.xlabel('ZCB, P(0,t)')
+    plt.plot(Tgrid, Exact, '.-')
+    plt.plot(Tgrid, Proxy_1FHW, '--r')
+    plt.legend(["Analytcal ZCB", "ZCB- 1F Model", "ZCB- 2F Model"])
+    plt.title('P(0,T) from Market vs. Analytical expression')
+
+    # Yield
+    plt.figure(2)
+    plt.grid()
+    plt.plot(Tgrid, Yield, '.-')
+    plt.xlabel('T')
+    plt.ylabel('yield, r(0,T)')
+
+    "Monte Carlo part"
+    # T_end = 10.0
+    T_end = 3
+    paths = GeneratePathsHWEuler(NoOfPaths, NoOfSteps, T_end, P0T, lambd, eta)
+    r = paths["R"]
+    timeGrid = paths["time"]
+
+    # Yield Curves on the last point
+    plt.figure(3)
+    plt.xlabel('time')
+    plt.ylabel('r(t)')
+    plt.title('MC Paths + Yield Curve (Hull-White)')
+    plt.grid()
+    # T_end2 = T_end + 40.0
+    T_end2 = T_end + 10.5
+    Tgrid2 = np.linspace(T_end + 0.001, T_end2 - 0.01, N)
+    ZCB = np.zeros([N, 1])
+    r_T = r[:, -1]
+    Yield_2 = np.zeros([N, 1])
+    for i in range(0, 20):
+        for j, Tj in enumerate(Tgrid2):
+            ZCB[j] = HW_ZCB(lambd, eta, P0T, T_end, Tj, r_T[i])
+            Yield_2[j] = -np.log(ZCB[j]) / (Tj - T_end)
+        plt.plot(Tgrid2, Yield_2, '.-')
+        plt.plot(timeGrid, r[i, :])
+
+
+if __name__ == "__main__":
 
     # We define a ZCB curve (obtained from the market)
+    lambd = 0.01  # kappa
+    eta = 0.002  # sigma
     ti = [0.0, 0.00273972600000000, 0.0876712330000000, 0.172602740000000, 0.257534247000000, 0.342465753000000,
           0.427397260000000, 0.512328767000000, 0.597260274000000, 0.682191781000000, 0.767123288000000,
           0.852054795000000, 0.936986301000000, 1.02191780800000, 1.10684931500000, 1.19178082200000, 1.27671232900000,
@@ -275,63 +415,19 @@ def mainCalculation():
           0.250151453000000, 0.249531508000000, 0.248912431000000, 0.248294210000000, 0.247676834000000,
           0.247060291000000, 0.246444571000000, 0.245829663000000, 0.245215555000000, 0.244602237000000,
           0.243989698000000, 0.243377928000000]
-    interpolator = interpolate.splrep(ti, np.log(Pi), s=0.00001)
-    P0T = lambda T: np.exp(interpolate.splev(T, interpolator, der=0))
-    r0 = HW_r_0(P0T, lambd, eta)
+    curve = {"time": ti, "ZCB": Pi}
 
-    # In this experiment we compare ZCB from the Market and Analytical expression
-    N = 20
-    T_end0 = 49.0
-    Tgrid = np.linspace(0.1, T_end0, N)
+    ti_2 = [0, 0.5, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5]
+    Pi_2 = [1, 1.00185043765951, 1.00185043765951, 1.00391653130505, 1.00614252331041, 1.00832719688306,
+            1.01033650361175, 1.01233739047874, 1.01368387139796, 1.01501716983981, 1.01534917875537, 1.0156514648247,
+            1.01462299949262, 1.01357162288502, 1.01109617933018, 1.00860881344159, 1.00478073140294, 1.00093751908447,
+            0.996013743608395, 0.991116688192314, 0.985373765779935, 0.979666978561686, 0.973810568195449]
+    curve_2 = {"time": ti_2, "ZCB": Pi_2}
 
-    Exact = np.zeros([N, 1])
-    Proxy_1FHW = np.zeros([N, 1])
-    Yield = np.zeros([N, 1])
-    for i, Ti in enumerate(Tgrid):
-        Proxy_1FHW[i] = HW_ZCB(lambd, eta, P0T, 0.0, Ti, r0)
-        Exact[i] = P0T(Ti)
-        Yield[i] = -np.log(Proxy_1FHW[i]) / Ti
+    # mainCalculation(curve=curve, lambd=lambd, eta=eta)
+    # hw = Hull_White_1F(kappa=lambd, vol=eta, curve=curve)
+    # hw.plot_ZCB()
 
-    plt.figure(1)
-    plt.grid()
-    plt.xlabel('T')
-    plt.xlabel('ZCB, P(0,t)')
-    plt.plot(Tgrid, Exact, '-k')
-    plt.plot(Tgrid, Proxy_1FHW, '--r')
-    plt.legend(["Analytcal ZCB", "ZCB- 1F Model", "ZCB- 2F Model"])
-    plt.title('P(0,T) from Monte Carlo vs. Analytical expression')
-
-    # Yield
-    plt.figure(2)
-    plt.grid()
-    plt.plot(Tgrid, Yield, '-k')
-    plt.xlabel('T')
-    plt.ylabel('yield, r(0,T)')
-
-    "Monte Carlo part"
-    T_end = 10.0
-    paths = GeneratePathsHWEuler(NoOfPaths, NoOfSteps, T_end, P0T, lambd, eta)
-    r = paths["R"]
-    timeGrid = paths["time"]
-
-    # Yield Curves on the last point
-    plt.figure(3)
-    plt.xlabel('time')
-    plt.ylabel('r(t)')
-    plt.title('MC Paths + Yield Curve (Hull-White)')
-    plt.grid()
-    T_end2 = T_end + 40.0
-    Tgrid2 = np.linspace(T_end + 0.001, T_end2 - 0.01, N)
-    ZCB = np.zeros([N, 1])
-    r_T = r[:, -1]
-    for i in range(0, 20):
-        for j, Tj in enumerate(Tgrid2):
-            ZCB[j] = HW_ZCB(lambd, eta, P0T, T_end, Tj, r_T[i])
-            Yield[j] = -np.log(ZCB[j]) / (Tj - T_end)
-        plt.plot(Tgrid2, Yield)
-        plt.plot(timeGrid, r[i, :])
-
-    print('finish')
-
-
-mainCalculation()
+    mainCalculation(curve=curve_2, lambd=lambd, eta=eta)
+    hw = Hull_White_1F(kappa=lambd, vol=eta, curve=curve_2)
+    hw.plot_ZCB()

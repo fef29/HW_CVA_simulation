@@ -168,7 +168,7 @@ def HW_SwapPrice(CP, notional, K, t, Ti, Tm, n, r_t, P0T, lambd, eta):
     # Now we need to handle the case when some payments are already done
     ti_grid = ti_grid[np.where(ti_grid > t)]
 
-    temp = np.zeros(np.size(r_t));
+    temp = np.zeros(np.size(r_t))
 
     P_t_TiLambda = lambda Ti: HW_ZCB(lambd, eta, P0T, t, Ti, r_t)
 

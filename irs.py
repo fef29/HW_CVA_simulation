@@ -1,80 +1,129 @@
-from flow import Flow
-from year_frac import YearFrac
+from little_junk import *
 from dateutil.relativedelta import relativedelta as rd
+import pandas as pd
+import datetime as dt
 
 
-class IRS_leg(Flow):
-    def __init__(self, f1, f2, r, convention, nominal, date_final, df_curve, value_date):
-        super().__init__(f1, f2, r, convention, nominal)
-        self.date_final = date_final
-        self.df_curve = df_curve
-        self.value_date = value_date
-        self.yf = YearFrac.calculation(self.f1, self.f2, self.convention)
-
-    @property
-    def date_final(self):
-        return self._date_final
-
-    @date_final.setter
-    def date_final(self, value):
-        self._date_final = value
-
-    @property
-    def df_curve(self):
-        return self._df_curve
-
-    @df_curve.setter
-    def df_curve(self, value):
-        self._df_curve = value
-
-    @property
-    def value_date(self):
-        return self._value_date
-
-    @value_date.setter
-    def value_date(self, value):
-        self._value_date = value
+class FixLeg(FixFlow):
+    """date1 y date2 son las 2 primeras fechas del flujo"""
+    def __init__(self, date1, date2, r, convention, nominal, maturity):
+        super().__init__(date1, date2, r, convention, nominal)
+        self.maturity = maturity
+        self.fix_dates = self.generate_dates()[:-1]
+        self.pay_dates = self.generate_dates()[1:]
+        self.flows = self.construct_flows()
 
     def generate_dates(self):
-        """Se generan fechas según la fecha de valoración"""
+        number_flows = int(round(YearFrac.calculation(self.date1, self.maturity, self.convention) / self.yf, 0))
+        return [self.date1 + rd(months=int(round(12 * x * self.yf, 0))) for x in range(number_flows + 1)]
 
-        if self.value_date <= self.f2:
-            final = int(YearFrac.calculation(self.f1, self.date_final, self.convention) / self.yf)
-            return [self.f1 + rd(months=12 * x * self.yf) for x in range(final + 2)]
-
-        else:
-
-            x = 1
-            while self.value_date > self.f2:
-                self.f2 = self.f2 + rd(months=12 * self.yf)
-                x = x + 1
-
-            self.f1 = self.f1 + rd(months=12 * x * self.yf)
-            final = int(YearFrac.calculation(self.f2, self.date_final, self.convention) / self.yf)
-
-            return [self.f1 + rd(months=12 * x * self.yf) for x in range(final + 1)]
-
-    def fix_dates(self):
-        return self.generate_dates()[:-1]
-
-    def pay_dates(self):
-        return self.generate_dates()[1:]
-
-    def df_s(self):
-        pay_dates = self.pay_dates()
-        return [self.df_curve(x) for x in pay_dates]
+    def generate_discount_factors(self, df_curve, valuation_date):
+        a = []
+        for f in self.flows:
+            if f.date1 > valuation_date:
+                a.append(df_curve(f.date2))
+            else:
+                a.append(0)
+        return a
 
     def construct_flows(self):
-        fix_dates = self.fix_dates()
-        pay_dates = self.pay_dates()
-        return [Flow(f1, f2, self.r, self.convention, self.nominal) for f1, f2 in zip(fix_dates, pay_dates)]
+        return [FixFlow(d1, d2, self.r, self.convention, self.nominal) for d1, d2 in zip(self.fix_dates, self.pay_dates)]
 
-    def value(self):
-        FDs = self.df_s()
-        flows = self.construct_flows()
-        return sum([f.value(FD) for f, FD in zip(flows, FDs)])
+    def leg_value(self, df_curve, valuation_date):
+        FDs = self.generate_discount_factors(df_curve, valuation_date)
+        v = 0
+        for f, fd in zip(self.flows, FDs):
+            if f.date1 > valuation_date:
+                v += f.value(fd)
+        return v
 
 
-class IRS(IRS_leg):
-    def __init__(self, f1, f2, r, convention, N, date_final, DFcurve):
-        super().__init__(f1, f2, r, convention, N, date_final, DFcurve, )
+class FloatLeg(FloatFlow):
+    def __init__(self, date1, date2, curve, convention, nominal, maturity):
+        super().__init__(date1, date2, curve, convention, nominal)
+        self.maturity = maturity
+        self.fix_dates = self.generate_dates()[:-1]
+        self.pay_dates = self.generate_dates()[1:]
+        self.flows = self.construct_flows()
+
+    def generate_dates(self):
+        number_flows = int(round(YearFrac.calculation(self.date1, self.maturity, self.convention) / self.yf, 0))
+        return [self.date1 + rd(months=int(round(12 * x * self.yf, 0))) for x in range(number_flows + 1)]
+
+    def generate_discount_factors(self, df_curve, valuation_date):
+        a = []
+        for f in self.flows:
+            if f.date1 > valuation_date:
+                a.append(df_curve(f.date2))
+            else:
+                a.append(0)
+        return a
+
+    def construct_flows(self):
+        flows = [FloatFlow(d1, d2, self.curve, self.convention, self.nominal) for d1, d2 in zip(self.fix_dates, self.pay_dates)]
+        flows = self.assign_forward_rate(flows)
+        return flows
+
+    def assign_forward_rate(self, flows):
+        path = r"C:\Users\ferra\PycharmProjects\HW_CVA_simulation\archives\Curves_EUR.xlsx"
+        if self.curve == 'EUR1M':
+            dates = pd.read_excel(path, sheet_name="EUR", usecols="A", dtype={'Dates': dt.date}).dropna()['EUR1m'].tolist()
+            values = pd.read_excel(path, sheet_name="EUR", usecols="B").dropna()['VL1'].tolist()
+
+        elif self.curve == 'EUR3M':
+            dates = pd.read_excel(path, sheet_name="EUR", usecols="C", dtype={'Dates': dt.date}).dropna()['EUR3m'].tolist()
+            values = pd.read_excel(path, sheet_name="EUR", usecols="D").dropna()['VL2'].tolist()
+
+        elif self.curve == 'EUR6M':
+            dates = pd.read_excel(path, sheet_name="EUR", usecols="E", dtype={'Dates': dt.date}).dropna()['EUR6m'].tolist()
+            values = pd.read_excel(path, sheet_name="EUR", usecols="F").dropna()['VL3'].tolist()
+
+        elif self.curve == 'EUR1Y':
+            dates = pd.read_excel(path, sheet_name="EUR", usecols="G", dtype={'Dates': dt.date}).dropna()['EUR1y'].tolist()
+            values = pd.read_excel(path, sheet_name="EUR", usecols="H").dropna()['VL4'].tolist()
+
+        else:
+            dates = 0
+            values = 0
+            print('error loading the curve to compute forwards')
+
+        fwd_curve = Curve(self.curve, dates, values)
+        valuation_date = dates[0]
+
+        # Asignamos forward a los flujos
+        for f in flows:
+            if f.date1 > valuation_date:
+                f.get_forward(fwd_curve)
+
+        return flows
+
+    def leg_value(self, df_curve, valuation_date):
+        FDs = self.generate_discount_factors(df_curve, valuation_date)
+
+        v = 0
+        for f, fd in zip(self.flows, FDs):
+            if f.date1 > valuation_date:
+                v += f.value(fd)
+        return v
+
+
+class interest_rate_swap:
+    def __init__(self, fix_date1, fix_date2, float_date1, float_date2, fix_rate, curve, fix_convention,
+                 float_convention, nominal, maturity, type):
+        self.fix_leg = FixLeg(fix_date1, fix_date2, fix_rate, fix_convention, nominal, maturity)
+        self.float_leg = FloatLeg(float_date1, float_date2, curve, float_convention, nominal, maturity)
+        self.type = type
+
+    def value(self, ois_curve, valuation_date):
+        float = self.float_leg.leg_value(ois_curve, valuation_date)
+        fix = self.fix_leg.leg_value(ois_curve, valuation_date)
+
+        if self.type == 'payer':
+            npv = float - fix
+        elif self.type == 'receiver':
+            npv = fix - float
+        else:
+            npv = 0
+            print('error')
+
+        return npv
